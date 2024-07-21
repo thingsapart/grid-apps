@@ -1164,6 +1164,245 @@ class OpTrace extends CamOp {
 }
 
 class OpPocket extends CamOp {
+//class OpTrochoidal extends CamOp {
+    constructor(state, op) {
+        super(state, op);
+    }
+
+    async slice(progress) {
+        const pocket = this;
+        const debug = false;
+        let { op, state } = this;
+        let { tool, rate, down, plunge, expand, contour, smooth, tolerance } = op;
+        let { settings, widget, addSlices, zTop, zBottom, zThru, tabs, color } = state;
+        let { updateToolDiams, cutTabs, cutPolys, healPolys, shadowAt } = state;
+        let { process, stock } = settings;
+        // generate tracing offsets from chosen features
+        let sliceOut;
+        let pockets = this.pockets = [];
+        let camTool = new CAM.Tool(settings, tool);
+        let toolDiam = camTool.fluteDiameter();
+        let toolOver = toolDiam * op.step;
+        let cutdir = process.camConventional;
+        let engrave = contour && op.engrave;
+        if (contour) {
+            down = 0;
+            this.topo = await CAM.Topo({
+                // onupdate: (update, msg) => {
+                onupdate: (index, total, msg) => {
+                    progress((index / total) * 0.9, msg);
+                },
+                ondone: (slices) => {
+                    // console.log({ contour: slices });
+                },
+                contour: {
+                    tool,
+                    tolerance,
+                    inside: true,
+                    axis: "-"
+                },
+                state: state
+            });
+        }
+        updateToolDiams(toolDiam);
+        if (tabs) {
+            tabs.forEach(tab => {
+                tab.off = POLY.expand([tab.poly], toolDiam / 2).flat();
+            });
+        }
+        function newPocket() {
+            pockets.push(sliceOut = []);
+        }
+        function newSliceOut(z) {
+            let slice = newSlice(z);
+            sliceOut.push(slice);
+            return slice;
+        }
+        function clearZ(polys, z, down) {
+            if (down) {
+                // adjust step down to a value <= down that
+                // ends on the lowest z specified
+                let diff = zTop - z;
+                down = diff / Math.ceil(diff / down);
+            }
+            let zs = down ? base.util.lerp(zTop, z, down) : [ z ];
+            if (engrave) {
+                toolDiam = toolOver;
+            }
+            if (contour) {
+                expand = engrave ? 0 : expand;
+            }
+            let zpro = 0, zinc = 1 / (polys.length * zs.length);
+            for (let poly of polys) {
+                newPocket();
+                for (let z of zs) {
+                    let clip = [], shadow;
+                    if (contour) {
+                        if (smooth) {
+                            clip = POLY.offset(POLY.offset([ poly ], smooth), -smooth);
+                        } else {
+                            clip = [ poly ];
+                        }
+                    } else {
+                        shadow = shadowAt(z);
+                        if (smooth) {
+                            shadow = POLY.setZ(POLY.offset(POLY.offset(shadow, smooth), -smooth), z);
+                        }
+                        POLY.subtract([ poly ], shadow, clip);
+                    }
+                    if (clip.length === 0) {
+                        continue;
+                    }
+                    let slice = newSliceOut(z);
+                    let count = engrave ? 1 : 999;
+                    slice.camTrace = { tool, rate, plunge };
+                    if (toolDiam) {
+                        const offs = contour ?
+                            [ expand || (-0.02), -toolOver ] :
+                            [ expand || (-toolDiam / 2), -toolOver ];
+                        POLY.offset(clip, offs, {
+                            count, outs: slice.camLines = [], flat:true, z
+                        });
+                    } else {
+                        // when engraving with a 0 width tip
+                        slice.camLines = clip;
+                    }
+                    if (tabs) {
+                        slice.camLines = cutTabs(tabs, POLY.flatten(slice.camLines, null, true), z);
+                    } else {
+                        slice.camLines = POLY.flatten(slice.camLines, null, true);
+                    }
+                    POLY.setWinding(slice.camLines, cutdir, false);
+                    if (contour) {
+                        slice.camLines = pocket.conform(slice.camLines, op.refine, engrave, pct => {
+                            progress(0.9 + (zpro + zinc * pct) * 0.1, "conform");
+                        });
+                    }
+                    slice.output()
+                        .setLayer("pocket", {line: color}, false)
+                        .addPolys(slice.camLines)
+                    if (debug && shadow) slice.output()
+                        .setLayer("pocket shadow", {line: 0xff8811}, false)
+                        .addPolys(shadow)
+                    if (!contour) {
+                        progress(zpro, "pocket");
+                    }
+                    zpro += zinc;
+                    addSlices(slice);
+                }
+            }
+        }
+        let surfaces = op.surfaces[widget.id] || [];
+        let vert = widget.getGeoVertices({ unroll: true, translate: true }).map(v => v.round(4));
+        // let vert = widget.getVertices().array.map(v => v.round(4));
+        let outline = [];
+        let faces = CAM.surface_find(widget, surfaces, 0.1);
+        let zmin = Infinity;
+        let j=0, k=faces.length;
+        for (let face of faces) {
+            let i = face * 9;
+            outline.push(newPolygon()
+                .add(vert[i++], vert[i++], zmin = Math.min(zmin, vert[i++]))
+                .add(vert[i++], vert[i++], zmin = Math.min(zmin, vert[i++]))
+                .add(vert[i++], vert[i++], zmin = Math.min(zmin, vert[i++]))
+            );
+        }
+        zmin = Math.max(zBottom, zmin);
+        outline = POLY.union(outline, 0.0001, true);
+        outline = POLY.setWinding(outline, cutdir, false);
+        outline = healPolys(outline);
+        if (smooth) {
+            outline = POLY.offset(POLY.offset(outline, smooth), -smooth);
+        }
+        if (outline.length) {
+            // option to skip interior features (holes, pillars)
+            if (!contour && op.outline) {
+                for (let p of outline) {
+                    p.inner = undefined;
+                }
+            }
+            if (debug) newSliceOut(zmin).output()
+                .setLayer("pocket area", {line: 0x1188ff}, false)
+                .addPolys(outline)
+            clearZ(outline, zmin + 0.0001, down);
+            progress(1, "pocket");
+        }
+    }
+
+    // mold cam output lines to the surface of the topo offset by tool geometry
+    conform(camLines, refine, engrave, progress) {
+        const topo = this.topo;
+        // re-segment polygon to a higher resolution
+        const hirez = camLines.map(p => p.segment(topo.tolerance * 2));
+        // walk points and offset from surface taking into account tool geometry
+        let steps = hirez.length;
+        let iter = 0;
+        for (let poly of hirez) {
+            for (let point of poly.points) {
+                point.z = engrave ? topo.zAtXY(point.x, point.y) : topo.toolAtXY(point.x, point.y);
+            }
+            progress((iter++ / steps) * 0.8);
+        }
+        steps = steps * refine;
+        iter = 0;
+        // walk points noting z deltas and smoothing z sawtooth patterns
+        for (let j=0; j<refine; j++) {
+            for (let poly of hirez) {
+                const points = poly.points, length = points.length;
+                let sn = []; // segment normals
+                for (let i=0; i<length; i++) {
+                    let p1 = points[i];
+                    let p2 = points[(i + 1) % length];
+                    sn.push(segmentNormal(p1, p2));
+                }
+                let vn = []; // vertex normals
+                for (let i=0; i<length; i++) {
+                    let n1 = sn[(i + length - 1) % length];
+                    let n2 = sn[i];
+                    let vi = vertexNormal(n1, n2, 1);
+                    vn.push(vi);
+                    let vl = Math.abs(1 - vi.vl).round(2);
+                    // vl should be close to zero on smooth / continuous curves
+                    // factoring out hard turns, we smooth the z using the weighted
+                    // z values of the points before and after the current point
+                    if (vl === 0) {
+                        let p0 = points[(i + length - 1) % length];
+                        let p1 = points[i];
+                        let p2 = points[(i + 1) % length];
+                        p1.z = (p0.z + p2.z + p1.z) / 3;
+                    }
+                }
+
+                progress((iter++ / steps) * 0.2 + 0.8);
+            }
+        }
+        // return hirez.map(p => p.midpoints(topo.tolerance * 8));
+        return hirez;
+    }
+
+    prepare(ops, progress) {
+        let { op, state, pockets } = this;
+        let { setTool, setSpindle, setTolerance, sliceOutput } = ops;
+        let { process } = state.settings;
+
+        setTool(op.tool, op.rate);
+        setSpindle(op.spindle);
+
+        if (this.topo) {
+            setTolerance(this.topo.tolerance);
+        }
+
+        for (let sliceOut of pockets) {
+            sliceOutput(sliceOut, {
+                cutdir: process.camConventional,
+                depthFirst: process.camDepthFirst && !state.isIndexed,
+                easeDown: op.down && process.easeDown ? op.down : 0,
+                progress: (n,m) => progress(n/m, "pocket")
+            });
+        }
+    }
+}
+class OpPocketOrig extends CamOp {
     constructor(state, op) {
         super(state, op);
     }

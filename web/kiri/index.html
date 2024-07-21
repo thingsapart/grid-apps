@@ -520,6 +520,7 @@
                                 <option value="endmill" lk="td_tyem" selected>end</option>
                                 <option value="ballmill" lk="td_tybm">ball</option>
                                 <option value="tapermill" lk="td_tytm">taper</option>
+                                <option value="trochoidal" lk="td_troch">trochoidal</option>
                             </select>
                         </div>
                         <div class="f-row var-row" title="tool number to use&#010;in gcode commands"><label lk="td_tonm">tool #</label><input id="tool-num" size="7"></input></div>
@@ -533,6 +534,8 @@
                         <div class="set-header f-col" ln="td_tapr">taper</div>
                         <div class="f-row var-row" title="taper angle"><label>angle</label><input id="tool-tangle" size=7></input></div>
                         <div class="f-row var-row" title="tip width in inches&#010;unless metric is checked&#010;then in millimeters"><label>tip</label><input id="tool-ttip" size="7"></input></div>
+                        <div class="set-header f-col" ln="td_troch">trochoidal</div>
+                        <div class="f-row var-row" title="trochoidal diameter for path computation - needs to fit into all features to be machined"><label>diameter</label><input id="tool-trochdiam" size=7></input></div>
                     </div>
                     <div id="tool-view" class="f-col t-33 t-body"></div>
                 </div>
@@ -540,7 +543,7 @@
                 <div id="tool-action" class="f-row j-center gap10">
                     <div class="f-row">
                         <button id="tool-add"><i class="fas fa-plus"></i></button>
-                        <button id="tool-del"><i class="fas fa-minus"></i></button>    
+                        <button id="tool-del"><i class="fas fa-minus"></i></button>
                     </div>
                     <div class="f-row">
                         <button id="tools-save" lk="save">save</button>

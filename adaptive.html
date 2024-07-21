@@ -1,0 +1,392 @@
+
+<script>
+
+// https://stackoverflow.com/questions/22521982/check-if-point-is-inside-a-polygon
+function inside(point, vs) {
+  // ray-casting algorithm based on
+  // https://wrf.ecse.rpi.edu/Research/Short_Notes/pnpoly.html
+
+  var x = point[0], y = point[1];
+
+  var inside = false;
+  for (var i = 0, j = vs.length - 1; i < vs.length; j = i++) {
+      var xi = vs[i][0], yi = vs[i][1];
+      var xj = vs[j][0], yj = vs[j][1];
+
+      var intersect = ((yi > y) != (yj > y))
+          && (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
+      if (intersect) inside = !inside;
+  }
+
+  return inside;
+};
+
+function circumcircle (points, radiusSq = false) {
+	const EPSILON = 1.0e-6;
+	const circle = {};
+
+	const ax = points[0][0];
+	const ay = points[0][1];
+	const bx = points[1][0];
+	const by = points[1][1];
+	const cx = points[2][0];
+	const cy = points[2][1];
+
+	const A = bx - ax;
+	const B = by - ay;
+	const C = cx - ax;
+	const D = cy - ay;
+
+	const E = A * (ax + bx) + B * (ay + by);
+	const F = C * (ax + cx) + D * (ay + cy);
+
+	const G = 2 * (A * (cy - by) - B * (cx - bx));
+
+	let dx, dy;
+
+	if (Math.abs(G) < EPSILON) {
+		const minx = Math.min(ax, bx, cx);
+		const miny = Math.min(ay, by, cy);
+		const maxx = Math.max(ax, bx, cx);
+		const maxy = Math.max(ay, by, cy);
+
+		circle.x = (minx + maxx) * 0.5;
+		circle.y = (miny + maxy) * 0.5;
+
+		dx = circle.x - minx;
+		dy = circle.y - miny;
+	}
+	else {
+		const cx = (D * E - B * F) / G;
+		const cy = (A * F - C * E) / G;
+
+		circle.x = cx;
+		circle.y = cy;
+
+		dx = circle.x - ax;
+		dy = circle.y - ay;
+	}
+
+	// radius squared
+	circle.r = dx * dx + dy * dy;
+
+	// radius
+	if (!radiusSq) circle.r = Math.sqrt(circle.r);
+
+	return circle;
+}
+
+</script>
+
+<script>
+  function square () {
+    return [
+             [5 ,5],
+             [5, 95],
+             [95, 95],
+             [95, 5],
+           ]
+  }
+
+  function parallelo1 () {
+    return [
+             [0 ,0],
+             [20, 100],
+             [120, 100],
+             [110, -20],
+             [50, 20],
+             [0, 0]
+           ]
+  }
+
+  function parallelo2 () {
+    return [
+             [0 ,0],
+             [10, 20],
+             [10, 80],
+             [0, 100],
+             [80, 100],
+             [90,80],
+             [90,20],
+             [80, 0],
+             [0, 0]
+           ]
+  }
+
+  function rescale (points, w, h) {
+    const xs = points.map((p) => { return p[0] })
+    const ys = points.map((p) => { return p[1] })
+    const xmin = Math.min(...xs)
+    const xmax = Math.max(...xs)
+    const ymin = Math.min(...ys)
+    const ymax = Math.max(...ys)
+    const xsc = xmax - xmin
+    const ysc = ymax - ymin
+
+    const sc = Math.max(xsc, ysc)
+
+    return points.map((p) => { return [(p[0] - xmin) / sc * w, (p[1] - ymin) / sc * h] })
+  }
+
+  function parallelo3 () {
+    const points = [[-92, -131], [-157, -70], [-176, 28], [-144, 107], [-87, 125], [-48, 77], [6, 84], [94, 131], [128, 129], [148, 64], [176, 61], [151, -15], [171, -78], [121, -119], [53, -125], [16, -65], [-31, -39], [-50, -44], [-40, -111], [-40, -111], [-40, -111], [-92, -131]]
+
+    return rescale(points, 100, 100)
+  }
+
+  function parallelo () {
+    return rescale([[-70.5, -56], [-82.5, 58], [-4.5, -7], [73.5, 64], [82.5, -64], [29.5, -10], [29.5, -10], [29.5, -10], [-70.5, -56]], 100, 100)
+  }
+
+  function neighbors (triangles, triangle) {
+    const verts = new Set(triangle.slice(0, 3))
+    const neighbors = []
+    for (const overts of triangles) {
+      if (overts[3] === triangle[3]) { continue }
+
+      for (const v of overts.slice(0, 3)) {
+        if (verts.has(v)) {
+          neighbors.push(overts)
+          break
+        }
+      }
+    }
+    return neighbors
+  }
+
+  function delaunyTriangulate(points) {
+    const delaunay = new Delaunay(points);
+    const triangleVerts = delaunay.triangulate();
+    // const circles = circumcircle(
+
+    const triangles = []
+    for (let j = 0; j < triangleVerts.length / 3; ++j) {
+      const v = triangleVerts.slice(j * 3, j * 3 + 3)
+      const centroid = [(v[0][0] + v[1][0] + v[2][0]) / 3, (v[0][1] + v[1][1] + v[2][1]) / 3]
+      // if (!inside(centroid, points)) { continue }
+      v.push(j)
+      v.push(centroid)
+      triangles.push(v)
+    }
+
+    return triangles
+  }
+
+  function MAT (points, r_thresh = 99999999999) {
+    const triangles = delaunyTriangulate(points)
+    const circs = triangles.map(function (tri) { return circumcircle(tri) } )
+
+    // filtering triangles that have radius > thresh
+    // simp_pts_0 = dt.points[dt.simplices[:, 0]]
+    // radii = np.linalg.norm(xy_centers - simp_pts_0, axis=1)
+    // is_in = radii < r_thresh
+
+    // build an edge list from (filtered) triangle neighbor relations
+    const edgeList = []
+    for (const [i, triangle] of triangles.entries()) {
+        //if not is_in[i]:
+        //    continue  # i is an outside triangle (large radius)
+        for (const nb of neighbors(triangles, triangle)) {
+            //if j != -1 and is_in[j]:
+              // edgeList.push([circs[i], circs[nb[3]]])
+              edgeList.push([triangle[4], nb[4]])
+        }
+    }
+
+    return edgeList
+  }
+
+  function SBMAT (points) {
+    function normal(p1, p2) {
+      const dx = p2[0] - p1[0]
+      const dy = p2[1] - p1[1]
+
+      const nn = [-dy, dx]
+      const l = Math.sqrt(nn[0] * nn[0] + nn[1] * nn[1])
+      return [nn[0] / l, nn[1] / l]
+    }
+
+    function closestPoint(points, p) {
+      let res = null
+      let dist = Number.POSITIVE_INFINITY
+
+      for (pp of points) {
+        const dx = p[0] - pp[0]
+        const dy = p[1] - pp[1]
+        const l = dx * dx + dy * dy
+        if (l < dist) {
+          dist = l
+          res = pp
+        }
+      }
+
+      return res
+    }
+
+    function eq(a, b) { return Math.abs(a - b) < Number.EPSILON }
+
+    // Radius of circle through p1 and p2 whose center lines on pt->normal
+    function circleTwoPointNormal(p1, p2, nm) {
+      // P1, P1, <center of circle> form Isoceles triangle.
+      // Find intersection of P1 normal and normal of (P2 - P1).
+      const m_x_1 = nm[0]
+      const m_y_1 = nm[1]
+      const b_x_1 = p1[0]
+      const b_y_1 = p1[1]
+
+      const b_x_2 = p2[0]
+      const b_y_2 = p2[1]
+      const n2 = normal(p2, p1)
+      const m_x_2 = n2[0]
+      const m_y_2 = n2[1]
+
+      const r2 =  1/(m_x_1 * -m_y_2 + m_x_2 * m_y_1) * (b_y_1 - b_y_2)
+      const center = [m_x_1 * r2 + b_x_1, m_y_1 * r2 + b_y_1]
+      return [center, r2]
+    }
+
+    const len = points.length
+    function mod(n, m) {
+      return ((n % m) + m) % m;
+    }
+
+    function iterBalls(i, r) {
+      const p3 = points[mod(i - 1 , len)]
+      const pt = points[i % len]
+      const p1 = points[mod(i + 1, len)]
+      const n = normal(p1, p3)
+
+      let nx = pt[0] + r * n[0]
+      let ny = pt[1] + r * n[1]
+      let px = ny
+      let py = ny
+
+      do {
+        px = ny
+        py = ny
+
+        const pc = closestPoint(points, [px, py])
+        const center_r = circleTwoPointNormal(pt, pc, n)
+        const center = center_r[0]
+        r = center_r[1]
+
+        const pts = [p1, pt, p3, [nx, ny]]
+        const circles = [{x: center.x, y: center.y, r: r }, {x: px, y:py, r: 2}, {x: nx, y: ny, r: 2}, {x: pt[0], y: pt[1], r: 1}, {x: p1[0], y: p1[1], r: 1}, {x: p3[0], y: p3[1], r: 1}]
+        const lines = [ [pt, [pt[0] + 100 * n[0], pt[1] + 100 * n[1]]] ]
+        draw(points, [], circles, lines)
+
+        nx = center[0]
+        ny = center[1]
+      } while (!eq(px, nx) && !eq(py, ny))
+
+      return { x: nx, y: ny, r: r }
+    }
+
+    return points.map(function (p, i) {
+      return iterBalls(i, 80)
+    })
+  }
+
+  function draw(points, triangles, circles, lines) {
+    const canvas = document.getElementById('canvas')
+    if (canvas.getContext) {
+      const ctx = canvas.getContext('2d')
+      ctx.fillStyle = "#000000"
+
+      const w = canvas.width / 2
+      const h = canvas.height / 2
+      const w2 = w / 2
+      const h2 = h / 2
+      ctx.beginPath()
+      ctx.moveTo(0, 0)
+      ctx.lineTo(w * 2, 0)
+      ctx.lineTo(w * 2, h * 2)
+      ctx.lineTo(0, h * 2)
+      ctx.closePath()
+      ctx.fill()
+
+      ctx.strokeStyle = "white"
+      ctx.lineWidth = 2
+      for (tri of triangles) {
+        ctx.beginPath()
+        ctx.moveTo(w2 + w * tri[0][0] / 100, h2 + h * tri[0][1] / 100)
+        ctx.lineTo(w2 + w * tri[1][0] / 100, h2 + h * tri[1][1] / 100)
+        ctx.lineTo(w2 + w * tri[2][0] / 100, h2 + h * tri[2][1] / 100)
+        ctx.closePath()
+        ctx.stroke()
+      }
+
+      ctx.strokeStyle = "#00ff0077"
+      ctx.lineWidth = 4
+
+      function xx(c) { return w2 + w * c / 100 }
+      function yy(c) { return h2 + h * c / 100 }
+
+      if (points && points.length > 0) {
+        ctx.beginPath()
+        ctx.moveTo(xx(points[0][0]), yy(points[0][1]))
+        for (p of points) {
+          ctx.lineTo(xx(p[0]), yy(p[1]))
+        }
+        //ctx.closePath()
+        ctx.stroke()
+      }
+
+      ctx.strokeStyle = "#ff000099"
+      ctx.lineWidth = 2
+
+      for (c of circles) {
+        ctx.beginPath()
+        ctx.arc(w2 + w * c.x / 100, h2 + h * c.y / 100, w * c.r / 100, 0, 2 * Math.PI, false)
+        ctx.stroke()
+      }
+
+      ctx.strokeStyle = "#0000ff99"
+      ctx.lineWidth = 2
+
+      for (p of lines) {
+        ctx.beginPath()
+        ctx.moveTo(xx(p[0][0]), yy(p[0][1]))
+        ctx.lineTo(xx(p[1][0]), yy(p[1][1]))
+        //ctx.moveTo(xx(p[0].x), yy(p[0].y))
+        //ctx.lineTo(xx(p[1].x), yy(p[1].y))
+        ctx.stroke()
+      }
+
+    }
+  }
+
+  function adaptive() {
+    const points = parallelo()
+    // const triangles = delaunyTriangulate(points.slice())
+    // const circles = triangles.map(function (tri) { return circumcircle(tri) } )
+    // const lines = MAT(points.slice())
+    // draw(points, triangles, circles, lines)
+
+    const circles = SBMAT(points.slice(0, points.length - 1))
+    draw(points, [], circles, [])
+  }
+
+  function docReady(fn) {
+    // see if DOM is already available
+    if (document.readyState === "complete" || document.readyState === "interactive") {
+        // call on next available tick
+        setTimeout(fn, 1);
+    } else {
+        document.addEventListener("DOMContentLoaded", fn);
+    }
+  }
+
+  docReady(function () { adaptive() })
+</script>
+
+<style>canvas { border: 1px solid red; }</style>
+
+
+<html>
+  <body>
+    <div id="main">
+      <canvas width='600px' height='600px' id="canvas" />
+    </div>
+  </body>
+</html>

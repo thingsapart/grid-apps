@@ -96,6 +96,10 @@ class Tool {
         return this.tool.type === "tapermill";
     }
 
+    isTrochoidal() {
+      return this.tool.type === 'trochoidal';
+    }
+
     generateProfile(resolution) {
         // generate tool profile
         let type = this.getType(),

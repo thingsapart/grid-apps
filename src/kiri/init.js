@@ -1113,7 +1113,8 @@ gapp.register("kiri.init", [], (root, exports) => {
         ui.toolShaftLen.value = tool.shaft_len;
         ui.toolTaperTip.value = tool.taper_tip || 0;
         ui.toolMetric.checked = tool.metric;
-        ui.toolType.selectedIndex = ['endmill','ballmill','tapermill'].indexOf(tool.type);
+        ui.toolTrochoidalDiam.value = tool.trochiodal_diam || tool.flute_diam * 2.0;
+        ui.toolType.selectedIndex = ['endmill','ballmill','tapermill','trochoidal'].indexOf(tool.type);
         if (tool.type === 'tapermill') {
             ui.toolTaperAngle.value = kiri.driver.CAM.calcTaperAngle(
                 (tool.flute_diam - tool.taper_tip) / 2, tool.flute_len
@@ -1146,8 +1147,10 @@ gapp.register("kiri.init", [], (root, exports) => {
     function renderTool(tool) {
         let type = selectedTool.type;
         let taper = type === 'tapermill';
+        let trochoidal = type === 'trochoidal';
         ui.toolTaperAngle.disabled = taper ? undefined : 'true';
         ui.toolTaperTip.disabled = taper ? undefined : 'true';
+        ui.toolTrochoidalDiam.disabled = trochoidal ? undefined : 'true';
         $('tool-view').innerHTML = '<svg id="tool-svg" width="100%" height="100%"></svg>';
         setTimeout(() => {
             let svg = $('tool-svg');
@@ -1231,7 +1234,8 @@ gapp.register("kiri.init", [], (root, exports) => {
         selectedTool.shaft_len = parseFloat(ui.toolShaftLen.value);
         selectedTool.taper_tip = parseFloat(ui.toolTaperTip.value);
         selectedTool.metric = ui.toolMetric.checked;
-        selectedTool.type = ['endmill','ballmill','tapermill'][ui.toolType.selectedIndex];
+        selectedTool.trochiodal_diam = parseFloat(ui.toolTrochoidalDiam.value)
+        selectedTool.type = ['endmill','ballmill','tapermill','trochoidal'][ui.toolType.selectedIndex];
         if (selectedTool.type === 'tapermill') {
             const CAM = kiri.driver.CAM;
             const rad = (selectedTool.flute_diam - selectedTool.taper_tip) / 2;
@@ -1650,6 +1654,7 @@ gapp.register("kiri.init", [], (root, exports) => {
             toolTaperAngle:     $('tool-tangle'),
             toolTaperTip:       $('tool-ttip'),
             toolMetric:         $('tool-metric'),
+            toolTrochoidalDiam: $('tool-trochdiam'),
 
             setMenu:            $('set-menu'),
             settings:           $('settings'),
