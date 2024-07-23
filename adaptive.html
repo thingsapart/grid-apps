@@ -129,7 +129,7 @@ function circumcircle (points, radiusSq = false) {
   }
 
   function parallelo () {
-    const points = [[-92, -131], [-157, -70], [-176, 28], [-144, 107], [-87, 125], [-48, 77], [6, 84], [94, 131], [128, 129], [148, 64], [176, 61], [151, -15], [171, -78], [121, -119], [53, -125], [16, -65], [-31, -39], [-50, -44], [-40, -111], [-40, -111], [-40, -111], [-92, -131]]
+    const points = [[-92, -131], [-157, -70], [-176, 28], [-144, 107], [-87, 125], [-48, 77], [6, 84], [94, 131], [128, 129], [148, 64], [176, 61], [151, -15], [171, -78], [121, -119], [53, -125], [16, -65], [-31, -39], [-50, -44], [-40, -111], [-92, -131]]
 
     return rescale(points, 100, 100)
   }
@@ -174,6 +174,10 @@ function circumcircle (points, radiusSq = false) {
     }
 
     return triangles
+  }
+
+  function pointAlongNormal(p, n, scale) {
+    return [p[0] + scale * n[0], p[1] + scale * n[1]]
   }
 
   function MAT (points, r_thresh = 99999999999) {
@@ -227,6 +231,9 @@ function circumcircle (points, radiusSq = false) {
     return [center, r, [x3, y3], n2]
   }
 
+  /*
+   * Shrinking-Balls Approximation of the Medial Axis Transform.
+   */
   function SBMAT (points) {
     const d = Draw()
     function normal(p1, p2) {
@@ -239,9 +246,9 @@ function circumcircle (points, radiusSq = false) {
 
     function normalInside (p1, p2, atPt, points) {
       let n = normal(p1, p2)
-      let nx = atPt[0] + 0.01 * n[0]
-      let ny = atPt[1] + 0.01 * n[1]
-      if (!inside(points, [nx, ny])) {
+      let nx = atPt[0] + 0.1 * n[0]
+      let ny = atPt[1] + 0.1 * n[1]
+      if (!inside([nx, ny], points)) {
         n[0] = -n[0]
         n[1] = -n[1]
       }
@@ -275,6 +282,7 @@ function circumcircle (points, radiusSq = false) {
       return ((n % m) + m) % m;
     }
 
+    const closedPoints = points.concat([points[0]])
     function iterBalls(i, r) {
       const p3 = points[mod(i - 1 , len)]
       const pt = points[i % len]
@@ -289,21 +297,21 @@ function circumcircle (points, radiusSq = false) {
       do {
         d.clear()
         d.lines([[[0, 0], [0, 20]]], 'green')
-        d.polygon(points.concat([points[0]]))
+        d.polygon(closedPoints)
 
         const circles = [{x: center[0], y: center[1], r: Math.abs(r) }]
         d.circles(circles, 'yellow', 2)
 
-        const pc = closestPoint(points, [px, py], pt)
+        const pc = closestPoint(points, [nx, ny], pt)
         const center_r = circleTwoPointNormal(pt, pc, n)
         center = center_r[0]
         r = center_r[1]
 
         d.points([center_r[2]], 'pink')
-        d.lines([[center_r[2], center_r[2] + 100 * center_r[3]]], 'orange')
+        d.lines([[center_r[2], pointAlongNormal(center_r[2], center_r[3], 100)]], 'orange')
 
-        // const pts = [p1, pt, p3, [nx, ny]]
-        // d.points(pts, color = 'green')
+        const pts = [p1, pt, p3]
+        d.points(pts, color = 'green')
 
         // const pointsOrg = [pt, p1, p3]
         // d.points(pointsOrg, '$ff0')
@@ -507,8 +515,13 @@ function circumcircle (points, radiusSq = false) {
     // const lines = MAT(points.slice())
     // draw(points, triangles, circles, lines)
 
-    const circles = SBMAT(points.slice(0, points.length - 1))
-    draw(points, [], circles, [])
+    const matPoints = SBMAT(points.slice(0, points.length - 1))
+    const d = Draw()
+
+    d.polygon(points, 'green')
+    d.circles(matPoints, '#00ff0044')
+    const pts = matPoints.map(function (el) { return [el.x, el.y] })
+    d.points(pts, 'white', 2)
   }
 
   function testCircleTwoPoint () {
