@@ -231,65 +231,66 @@ function circumcircle (points, radiusSq = false) {
     return [center, r, [x3, y3], n2]
   }
 
+  function mod(n, m) {
+    return ((n % m) + m) % m;
+  }
+
+  function normal(p1, p2) {
+    const dx = p2[0] - p1[0]
+    const dy = p2[1] - p1[1]
+
+    const l = Math.sqrt(dx*dx + dy*dy)
+    return [-dy / l, dx / l]
+  }
+
+  function normal_dist(p1, p2) {
+    const dx = p2[0] - p1[0]
+    const dy = p2[1] - p1[1]
+
+    const l = Math.sqrt(dx*dx + dy*dy)
+    return [[-dy / l, dx / l], l]
+  }
+
+  function normalInside (p1, p2, atPt, points) {
+    let n = normal(p1, p2)
+    let nx = atPt[0] + 0.1 * n[0]
+    let ny = atPt[1] + 0.1 * n[1]
+    if (!inside([nx, ny], points)) {
+      n[0] = -n[0]
+      n[1] = -n[1]
+    }
+    return n
+  }
+
+  function closestPoint(points, p, butNotP) {
+    let res = null
+    let dist = Number.POSITIVE_INFINITY
+
+    for (pp of points) {
+      const dx = p[0] - pp[0]
+      const dy = p[1] - pp[1]
+
+      if (butNotP && eq(pp[0], butNotP[0]) && eq(pp[1], butNotP[1])) { continue }
+
+      const l = dx * dx + dy * dy
+      if (l < dist) {
+        dist = l
+        res = pp
+      }
+    }
+
+    return res
+  }
+
+  function eq(a, b) { return Math.abs(a - b) < Number.EPSILON }
+
   /*
    * Shrinking-Balls Approximation of the Medial Axis Transform.
    */
-  function SBMAT (points, iter_dist=1.0) {
+  function SBMAT (points) {
     const d = Draw()
-    function normal(p1, p2) {
-      const dx = p2[0] - p1[0]
-      const dy = p2[1] - p1[1]
-
-      const l = Math.sqrt(dx*dx + dy*dy)
-      return [-dy / l, dx / l]
-    }
-
-    function normal_dist(p1, p2) {
-      const dx = p2[0] - p1[0]
-      const dy = p2[1] - p1[1]
-
-      const l = Math.sqrt(dx*dx + dy*dy)
-      return [[-dy / l, dx / l], l]
-    }
-
-    function normalInside (p1, p2, atPt, points) {
-      let n = normal(p1, p2)
-      let nx = atPt[0] + 0.1 * n[0]
-      let ny = atPt[1] + 0.1 * n[1]
-      if (!inside([nx, ny], points)) {
-        n[0] = -n[0]
-        n[1] = -n[1]
-      }
-      return n
-    }
-
-    function closestPoint(points, p, butNotP) {
-      let res = null
-      let dist = Number.POSITIVE_INFINITY
-
-      for (pp of points) {
-        const dx = p[0] - pp[0]
-        const dy = p[1] - pp[1]
-
-        if (butNotP && eq(pp[0], butNotP[0]) && eq(pp[1], butNotP[1])) { continue }
-
-        const l = dx * dx + dy * dy
-        if (l < dist) {
-          dist = l
-          res = pp
-        }
-      }
-
-      return res
-    }
-
-    function eq(a, b) { return Math.abs(a - b) < Number.EPSILON }
 
     const len = points.length
-    function mod(n, m) {
-      return ((n % m) + m) % m;
-    }
-
     const closedPoints = points.concat([points[0]])
     function iterBalls(pt, i, r) {
       const p3 = points[mod(i - 1 , len)]
@@ -299,15 +300,7 @@ function circumcircle (points, radiusSq = false) {
       d.clear()
       d.polygon(closedPoints)
 
-      // Find normal - when pt falls on a polygon point use p1 and p3, otherwise closest of those points and pt.
-      let n = null
-      //if (eq(pt[0], ppt[0]) && eq(pt[1], ppt[1])) {
-        n = normalInside(p1, p3, ppt, points)
-      /*} else {
-        n = normalInside(p1, ppt, pt, points)
-        const lines = [ [pt, [pt[0] + 100 * n[0], pt[1] + 100 * n[1]]] ]
-        d.lines(lines, 'lightblue')
-      }*/
+      const n = normalInside(p1, p3, ppt, points)
 
       let nx = pt[0] + r * n[0]
       let ny = pt[1] + r * n[1]
@@ -333,9 +326,6 @@ function circumcircle (points, radiusSq = false) {
         const pts = [p1, pt, p3]
         d.points(pts, color = 'green')
 
-        // const pointsOrg = [pt, p1, p3]
-        // d.points(pointsOrg, '$ff0')
-
         d.points([[px, py]], '#7f7', 4)
         d.points([[nx, ny]], '#fff', 4)
         d.points([pc], 'blue', 4)
@@ -354,22 +344,26 @@ function circumcircle (points, radiusSq = false) {
     }
 
     return points.map(function (p, i) {
+      return iterBalls(p, i, 80)
+    }).flat()
+  }
+
+  function polyLerp (points, max_dist) {
+    const len = points.length
+    return points.map(function (p, i) {
       const pt = points[i % len]
       const pt_next = points[mod(i + 1, len)]
       const nd = normal_dist(pt, pt_next)
       const mx = [nd[0][1], -nd[0][0]]
       const l = nd[1]
 
-      const k = Math.ceil(l / iter_dist)
+      const k = Math.ceil(l / max_dist)
       const step = l / k
 
       res = []
       for (let lerp = 0; lerp < k; ++lerp) {
         const pp = pointAlongNormal(pt, mx, step * lerp)
-        const rp = iterBalls(pp, i, 80)
-        d.points(res.map(function (p) { return [p.x, p.y] }), 'red', 4)
-        d.points([[rp.x, rp.y]], 'red', 4)
-        res.push(rp)
+        res.push(pp)
       }
       return res
     }).flat()
@@ -546,7 +540,8 @@ function circumcircle (points, radiusSq = false) {
     }
 
   function adaptive() {
-    const points = parallelo()
+    const points = polyLerp(parallelo(), 1.0)
+
     // const triangles = delaunyTriangulate(points.slice())
     // const circles = triangles.map(function (tri) { return circumcircle(tri) } )
     // const lines = MAT(points.slice())
