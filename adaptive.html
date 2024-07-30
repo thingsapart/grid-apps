@@ -301,13 +301,13 @@ function circumcircle (points, radiusSq = false) {
 
       // Find normal - when pt falls on a polygon point use p1 and p3, otherwise closest of those points and pt.
       let n = null
-      if (eq(pt[0], ppt[0]) && eq(pt[1], ppt[1])) {
+      //if (eq(pt[0], ppt[0]) && eq(pt[1], ppt[1])) {
         n = normalInside(p1, p3, ppt, points)
-      } else {
+      /*} else {
         n = normalInside(p1, ppt, pt, points)
         const lines = [ [pt, [pt[0] + 100 * n[0], pt[1] + 100 * n[1]]] ]
         d.lines(lines, 'lightblue')
-      }
+      }*/
 
       let nx = pt[0] + r * n[0]
       let ny = pt[1] + r * n[1]
@@ -367,8 +367,9 @@ function circumcircle (points, radiusSq = false) {
       for (let lerp = 0; lerp < k; ++lerp) {
         const pp = pointAlongNormal(pt, mx, step * lerp)
         const rp = iterBalls(pp, i, 80)
-        res.push(rp)
         d.points(res.map(function (p) { return [p.x, p.y] }), 'red', 4)
+        d.points([[rp.x, rp.y]], 'red', 4)
+        res.push(rp)
       }
       return res
     }).flat()
